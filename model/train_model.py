@@ -1,7 +1,9 @@
 """
-LeafLens — Model Training Script
+LeafLens — Model Training Script  (FIXED)
 Run this in Jupyter Notebook or directly via: python train_model.py
-Dataset: PlantVillage (38 disease classes)
+
+FIX: NUM_CLASSES is now auto-detected from your actual dataset folder.
+     Works with 16-class, 38-class, or any other PlantVillage variant.
 """
 
 import os
@@ -25,9 +27,27 @@ import matplotlib.pyplot as plt
 IMG_SIZE    = 224
 BATCH_SIZE  = 32
 EPOCHS      = 20
-NUM_CLASSES = 38
-DATASET_DIR = "../dataset/PlantVillage"   # change if your path differs
-MODEL_DIR   = "."
+# ✅ FIX: Use your actual Windows path below (raw string with r"...")
+DATASET_DIR = r"C:\Users\Admin\Desktop\LeafLens\dataset\PlantVillage"
+MODEL_DIR   = os.path.dirname(os.path.abspath(__file__))   # same folder as this script
+
+# ──────────────────────────────────────────────
+# VERIFY DATASET EXISTS
+# ──────────────────────────────────────────────
+if not os.path.exists(DATASET_DIR):
+    raise FileNotFoundError(
+        f"\n\nDataset not found at: {DATASET_DIR}\n"
+        "Please check your PlantVillage folder path and update DATASET_DIR above."
+    )
+
+actual_classes = [
+    d for d in os.listdir(DATASET_DIR)
+    if os.path.isdir(os.path.join(DATASET_DIR, d))
+]
+print(f"\n✅ Dataset found: {len(actual_classes)} classes at {DATASET_DIR}")
+print("Classes detected:")
+for i, c in enumerate(sorted(actual_classes)):
+    print(f"  {i+1:2d}. {c}")
 
 # ──────────────────────────────────────────────
 # DATA GENERATORS  (augmentation for training)
@@ -69,16 +89,20 @@ val_generator = val_datagen.flow_from_directory(
     shuffle=False
 )
 
-# Save class indices so the Flask API can decode predictions
+# ✅ FIX: Read actual class count from the generator (not hardcoded)
+NUM_CLASSES   = len(train_generator.class_indices)
 class_indices = train_generator.class_indices
-class_names   = {v: k for k, v in class_indices.items()}   # {0: 'Apple_scab', ...}
+# ✅ FIX: Save keys as strings so JSON works correctly
+class_names   = {str(v): k for k, v in class_indices.items()}
 
-with open("class_names.json", "w") as f:
+class_json_path = os.path.join(MODEL_DIR, "class_names.json")
+with open(class_json_path, "w") as f:
     json.dump(class_names, f, indent=2)
 
-print(f"Classes found: {len(class_indices)}")
-print(f"Training samples:   {train_generator.samples}")
-print(f"Validation samples: {val_generator.samples}")
+print(f"\n✅ NUM_CLASSES auto-detected: {NUM_CLASSES}")
+print(f"   Training samples  : {train_generator.samples}")
+print(f"   Validation samples: {val_generator.samples}")
+print(f"   class_names.json saved → {class_json_path}\n")
 
 # ──────────────────────────────────────────────
 # MODEL — MobileNetV2 + custom classification head
@@ -98,6 +122,7 @@ x = Dense(256, activation="relu")(x)
 x = Dropout(0.4)(x)
 x = Dense(128, activation="relu")(x)
 x = Dropout(0.3)(x)
+# ✅ FIX: NUM_CLASSES comes from generator, so this always matches your data
 output = Dense(NUM_CLASSES, activation="softmax")(x)
 
 model = Model(inputs=base_model.input, outputs=output)
@@ -143,7 +168,7 @@ print("\n=== PHASE 1: Training classification head ===")
 history1 = model.fit(
     train_generator,
     validation_data=val_generator,
-    epochs=10,
+    epochs=2,
     callbacks=callbacks,
     verbose=1
 )
